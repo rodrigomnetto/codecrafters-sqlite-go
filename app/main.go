@@ -22,7 +22,7 @@ func main() {
 			log.Fatal(err)
 		}
 
-		header := make([]byte, 100)
+		header := make([]byte, 112)
 
 		_, err = databaseFile.Read(header)
 		if err != nil {
@@ -39,6 +39,14 @@ func main() {
 
 		// Uncomment this to pass the first stage
 		fmt.Printf("database page size: %v", pageSize)
+
+		var cellCount uint16
+		if err := binary.Read(bytes.NewReader(header[103:105]), binary.BigEndian, &cellCount); err != nil {
+			fmt.Println("Failed to read integer:", err)
+			return
+		}
+
+		fmt.Printf("number of tables: %v", cellCount)
 	default:
 		fmt.Println("Unknown command", command)
 		os.Exit(1)
