@@ -22,31 +22,10 @@ func main() {
 			log.Fatal(err)
 		}
 
-		header := make([]byte, 108)
+		page := ReadPage(databaseFile, 0, 0)
 
-		_, err = databaseFile.Read(header)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		var pageSize uint16
-		if err := binary.Read(bytes.NewReader(header[16:18]), binary.BigEndian, &pageSize); err != nil {
-			fmt.Println("Failed to read integer:", err)
-			return
-		}
-		// You can use print statements as follows for debugging, they'll be visible when running tests.
-		fmt.Fprintln(os.Stderr, "Logs from your program will appear here!")
-
-		// Uncomment this to pass the first stage
-		fmt.Printf("database page size: %v", pageSize)
-
-		var cellCount uint16
-		if err := binary.Read(bytes.NewReader(header[103:105]), binary.BigEndian, &cellCount); err != nil {
-			fmt.Println("Failed to read integer:", err)
-			return
-		}
-
-		fmt.Printf("number of tables: %v", cellCount)
+		fmt.Printf("database page size: %v", page.DbHeader.PageSize)
+		fmt.Printf("number of tables: %v", page.PageHeader.CellsCount)
 	case ".tables":
 		databaseFile, err := os.Open(databaseFilePath)
 		if err != nil {
@@ -70,9 +49,9 @@ type DBHeader struct {
 }
 
 type Page struct {
-	DbHeader DBHeader
-	Header   PageHeader
-	Cells    []Cell
+	DbHeader   DBHeader
+	PageHeader PageHeader
+	Cells      []Cell
 }
 
 type PageHeader struct {
@@ -138,9 +117,9 @@ func ReadPage(file *os.File, fileOffset int64, pgSize uint32) Page {
 	}
 
 	return Page{
-		DbHeader: dbHeader,
-		Header:   header,
-		Cells:    cells}
+		DbHeader:   dbHeader,
+		PageHeader: header,
+		Cells:      cells}
 }
 
 func ReadDBHeader(file *os.File) DBHeader {
