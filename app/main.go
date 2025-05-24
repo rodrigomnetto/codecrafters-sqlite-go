@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	// Available if you need it!
 	// "github.com/xwb1989/sqlparser"
 )
@@ -15,32 +16,61 @@ func main() {
 	databaseFilePath := os.Args[1]
 	command := os.Args[2]
 
-	switch command {
-	case ".dbinfo":
+	if command[0] != '.' {
 		databaseFile, err := os.Open(databaseFilePath)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		page := ReadPage(databaseFile, 0, 0)
+		p := strings.Split(command, " ")
 
-		fmt.Printf("database page size: %v", page.DbHeader.PageSize)
-		fmt.Printf("number of tables: %v", page.PageHeader.CellsCount)
-	case ".tables":
-		databaseFile, err := os.Open(databaseFilePath)
-		if err != nil {
-			log.Fatal(err)
-		}
+		table := p[len(p)-1]
 
 		page := ReadPage(databaseFile, 0, 0)
 
 		for _, cell := range page.Cells {
-			fmt.Println(string(cell.Record[2].Value))
+
+			if string(cell.Record[2].Value) == table {
+
+				var rootPage int8
+
+				binary.Read(bytes.NewReader(cell.Record[3].Value), binary.BigEndian, &rootPage)
+
+				page = ReadPage(databaseFile, int64(rootPage-1)*int64(page.DbHeader.PageSize), page.DbHeader.PageSize)
+
+				fmt.Println(len(page.Cells))
+
+				break
+			}
 		}
 
-	default:
-		fmt.Println("Unknown command", command)
-		os.Exit(1)
+	} else {
+		switch command {
+		case ".dbinfo":
+			databaseFile, err := os.Open(databaseFilePath)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			page := ReadPage(databaseFile, 0, 0)
+
+			fmt.Printf("database page size: %v", page.DbHeader.PageSize)
+			fmt.Printf("number of tables: %v", page.PageHeader.CellsCount)
+		case ".tables":
+			databaseFile, err := os.Open(databaseFilePath)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			page := ReadPage(databaseFile, 0, 0)
+
+			for _, cell := range page.Cells {
+				fmt.Println(string(cell.Record[2].Value))
+			}
+		default:
+			fmt.Println("Unknown command", command)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -137,7 +167,7 @@ func ReadDBHeader(file *os.File) DBHeader {
 	return DBHeader{PageSize: uint32(size)}
 }
 
-func ReadCell(byteArr []byte, off int64) *Cell {
+func ReadCell(byteArr []byte, off int64) *Cell { //for Table B-Tree Leaf Cell only. treat overflow pages later!
 
 	//read cell size
 	recordSize, c1, _ := ReadVarint(byteArr[off:])
@@ -167,15 +197,35 @@ func ReadRecord(byteArr []byte) []Column {
 	for _, tp := range serialTypes {
 		var size int64
 		switch {
+		case tp == 1:
+			size = 1
+		case tp == 2:
+			size = 2
+		case tp == 3:
+			size = 3
+		case tp == 4:
+			size = 4
+		case tp == 5:
+			size = 6
+		case tp == 6:
+			size = 8
+		case tp == 7:
+			size = 8
 		case tp > 12 && tp%2 == 0:
 			size = (tp - 12) / 2 //string size
 		case tp > 13:
 			size = (tp - 13) / 2 //string size
 		default:
-			size = 1 // 1 byte size
-		} //TODO add other type later
+			size = 0 // data is NULL
+		}
 
-		columns = append(columns, Column{SerialType: tp, Value: byteArr[bytesRead : bytesRead+size]})
+		var value []byte
+
+		if size != 0 {
+			value = byteArr[bytesRead : bytesRead+size]
+		}
+
+		columns = append(columns, Column{SerialType: tp, Value: value})
 		bytesRead += size
 	}
 
