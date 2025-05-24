@@ -7,16 +7,36 @@ import (
 	"log"
 	"os"
 	"strings"
-	// Available if you need it!
-	// "github.com/xwb1989/sqlparser"
 )
 
-// Usage: your_program.sh sample.db .dbinfo
 func main() {
 	databaseFilePath := os.Args[1]
 	command := os.Args[2]
 
+	databaseFile, err := os.Open(databaseFilePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	//load schema table
+	schemaPage := ReadPage(databaseFile, 0, 0)
+	var schemas []Schema
+
+	for _, cell := range schemaPage.Cells {
+		var rootPage int64
+		binary.Read(bytes.NewReader(cell.Record[3].Value), binary.BigEndian, &rootPage)
+
+		schemas = append(schemas, Schema{
+			Type:     string(cell.Record[0].Value),
+			Name:     string(cell.Record[1].Value),
+			TblName:  string(cell.Record[2].Value),
+			RootPage: rootPage,
+			Sql:      string(cell.Record[4].Value),
+		})
+	}
+
 	if command[0] != '.' {
+
 		databaseFile, err := os.Open(databaseFilePath)
 		if err != nil {
 			log.Fatal(err)
@@ -47,31 +67,25 @@ func main() {
 	} else {
 		switch command {
 		case ".dbinfo":
-			databaseFile, err := os.Open(databaseFilePath)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			page := ReadPage(databaseFile, 0, 0)
-
-			fmt.Printf("database page size: %v", page.DbHeader.PageSize)
-			fmt.Printf("number of tables: %v", page.PageHeader.CellsCount)
+			fmt.Printf("database page size: %v", schemaPage.DbHeader.PageSize)
+			fmt.Printf("number of tables: %v", schemaPage.PageHeader.CellsCount)
 		case ".tables":
-			databaseFile, err := os.Open(databaseFilePath)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			page := ReadPage(databaseFile, 0, 0)
-
-			for _, cell := range page.Cells {
-				fmt.Println(string(cell.Record[2].Value))
+			for _, s := range schemas {
+				fmt.Println(string(s.TblName))
 			}
 		default:
 			fmt.Println("Unknown command", command)
 			os.Exit(1)
 		}
 	}
+}
+
+type Schema struct {
+	Type     string
+	Name     string
+	TblName  string
+	RootPage int64
+	Sql      string
 }
 
 type DBHeader struct {
