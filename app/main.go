@@ -18,60 +18,25 @@ func main() {
 		log.Fatal(err)
 	}
 
-	//load schema table
-	schemaPage := ReadPage(databaseFile, 0, 0)
-	var schemas []Schema
-
-	for _, cell := range schemaPage.Cells {
-		var rootPage int64
-		binary.Read(bytes.NewReader(cell.Record[3].Value), binary.BigEndian, &rootPage)
-
-		schemas = append(schemas, Schema{
-			Type:     string(cell.Record[0].Value),
-			Name:     string(cell.Record[1].Value),
-			TblName:  string(cell.Record[2].Value),
-			RootPage: rootPage,
-			Sql:      string(cell.Record[4].Value),
-		})
-	}
+	schema := LoadSchema(databaseFile)
 
 	if command[0] != '.' {
 
-		databaseFile, err := os.Open(databaseFilePath)
-		if err != nil {
-			log.Fatal(err)
-		}
-
 		p := strings.Split(command, " ")
+		tableName := p[len(p)-1]
+		tableInfo := GetTableInfo(schema, tableName)
 
-		table := p[len(p)-1]
-
-		page := ReadPage(databaseFile, 0, 0)
-
-		for _, cell := range page.Cells {
-
-			if string(cell.Record[2].Value) == table {
-
-				var rootPage int8
-
-				binary.Read(bytes.NewReader(cell.Record[3].Value), binary.BigEndian, &rootPage)
-
-				page = ReadPage(databaseFile, int64(rootPage-1)*int64(page.DbHeader.PageSize), page.DbHeader.PageSize)
-
-				fmt.Println(len(page.Cells))
-
-				break
-			}
-		}
+		page := ReadPage(databaseFile, tableInfo.PageOffset, schema.PageSize)
+		fmt.Println(len(page.Cells))
 
 	} else {
 		switch command {
 		case ".dbinfo":
-			fmt.Printf("database page size: %v", schemaPage.DbHeader.PageSize)
-			fmt.Printf("number of tables: %v", schemaPage.PageHeader.CellsCount)
+			fmt.Printf("database page size: %v", schema.PageSize)
+			fmt.Printf("number of tables: %v", len(schema.Tables))
 		case ".tables":
-			for _, s := range schemas {
-				fmt.Println(string(s.TblName))
+			for _, s := range schema.Tables {
+				fmt.Println(string(s.Name))
 			}
 		default:
 			fmt.Println("Unknown command", command)
@@ -80,16 +45,8 @@ func main() {
 	}
 }
 
-type Schema struct {
-	Type     string
-	Name     string
-	TblName  string
-	RootPage int64
-	Sql      string
-}
-
 type DBHeader struct {
-	PageSize uint32
+	PageSize int32
 }
 
 type Page struct {
@@ -114,7 +71,7 @@ type Column struct {
 	Value      []byte
 }
 
-func ReadPage(file *os.File, fileOffset int64, pgSize uint32) Page {
+func ReadPage(file *os.File, fileOffset int64, pgSize int32) Page {
 
 	var pageOffset uint32 = 0
 	var dbHeader DBHeader
@@ -171,14 +128,14 @@ func ReadDBHeader(file *os.File) DBHeader {
 	var header = make([]byte, 100)
 	file.Read(header)
 
-	var size uint16
+	var size int16
 	binary.Read(bytes.NewReader(header[16:18]), binary.BigEndian, &size)
 
 	if size == 1 {
 		return DBHeader{PageSize: 65536}
 	}
 
-	return DBHeader{PageSize: uint32(size)}
+	return DBHeader{PageSize: int32(size)}
 }
 
 func ReadCell(byteArr []byte, off int64) *Cell { //for Table B-Tree Leaf Cell only. treat overflow pages later!
