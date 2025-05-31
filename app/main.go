@@ -7,28 +7,48 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	"github.com/xwb1989/sqlparser"
 )
+
+var dbFile *os.File
+var schema Schema
 
 func main() {
 	databaseFilePath := os.Args[1]
 	command := os.Args[2]
-
-	databaseFile, err := os.Open(databaseFilePath)
-	if err != nil {
-		log.Fatal(err)
+	var e error
+	dbFile, e = os.Open(databaseFilePath)
+	if e != nil {
+		log.Fatal(e)
 	}
 
-	schema := LoadSchema(databaseFile)
+	schema = LoadSchema(dbFile)
+	stm, _ := sqlparser.Parse(command)
+	slct, ok := stm.(*sqlparser.Select)
 
-	if command[0] != '.' {
+	if ok {
+		var rws []Row
+		rsl := Run(slct, rws)
 
-		p := strings.Split(command, " ")
-		tableName := p[len(p)-1]
-		tableInfo := GetTableInfo(schema, tableName)
-
-		page := ReadPage(databaseFile, tableInfo.PageOffset, schema.PageSize)
-		fmt.Println(len(page.Cells))
-
+		for y, r := range rsl {
+			for i, c := range r.Metadata {
+				if i > 0 {
+					print(";")
+				}
+				switch strings.ToLower(c.Type) {
+				case "integer":
+					var val int64
+					binary.Read(bytes.NewReader(r.Colums[i].Value), binary.BigEndian, &val)
+					print(val)
+				case "text":
+					print(string(r.Colums[i].Value))
+				}
+			}
+			if y < len(rsl)-1 {
+				println()
+			}
+		}
 	} else {
 		switch command {
 		case ".dbinfo":
@@ -72,7 +92,6 @@ type Column struct {
 }
 
 func ReadPage(file *os.File, fileOffset int64, pgSize int32) Page {
-
 	var pageOffset uint32 = 0
 	var dbHeader DBHeader
 
