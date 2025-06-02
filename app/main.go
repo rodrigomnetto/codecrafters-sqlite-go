@@ -31,7 +31,7 @@ func main() {
 		var rws []Row
 		rsl := Run(slct, rws)
 
-		for y, r := range rsl {
+		for _, r := range rsl {
 			for i, c := range r.Metadata {
 				if i > 0 {
 					fmt.Print("|")
