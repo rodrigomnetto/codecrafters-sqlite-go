@@ -145,7 +145,7 @@ func ReadDBHeader(file *os.File) DBHeader {
 	var header = make([]byte, 100)
 	file.Read(header)
 
-	var size int16
+	var size uint16
 	binary.Read(bytes.NewReader(header[16:18]), binary.BigEndian, &size)
 
 	if size == 1 {

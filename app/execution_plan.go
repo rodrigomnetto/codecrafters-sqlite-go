@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 
 	"github.com/xwb1989/sqlparser"
@@ -18,6 +19,11 @@ func Run(node sqlparser.SQLNode, rws []Row) []Row {
 
 	if ok {
 		result = Run(slct.From, rws)
+
+		if slct.Where != nil {
+			result = Run(slct.Where, result)
+		}
+
 		result = Run(slct.SelectExprs, result)
 
 		return result
@@ -39,7 +45,32 @@ func Run(node sqlparser.SQLNode, rws []Row) []Row {
 		return result
 	}
 
-	//where - not implemented yet
+	//where
+	whr, ok := node.(*sqlparser.Where)
+
+	if ok {
+		cmp, ok := whr.Expr.(*sqlparser.ComparisonExpr)
+
+		if ok {
+
+			lft, ok := cmp.Left.(*sqlparser.ColName)
+			rht, ok2 := cmp.Right.(*sqlparser.SQLVal)
+
+			if ok && ok2 {
+				for _, r := range rws {
+					for i, m := range r.Metadata {
+						if m.Name == lft.Name.String() {
+							if bytes.Equal(r.Colums[i].Value, rht.Val) {
+								result = append(result, r)
+							}
+						}
+					}
+				}
+			}
+		}
+
+		return result
+	}
 
 	//projection
 	slcExprs, ok := node.(sqlparser.SelectExprs)
