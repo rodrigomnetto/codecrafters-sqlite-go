@@ -31,29 +31,24 @@ func main() {
 		var rws []Row
 		rsl := Run(slct, rws)
 
-		var out string
-		for _, r := range rsl {
+		for y, r := range rsl {
 			for i, c := range r.Metadata {
 				if i > 0 {
-					print(";")
+					print("|")
 				}
 				switch strings.ToLower(c.Type) {
 				case "integer": //create enum of database types
 					var val int64
 					binary.Read(bytes.NewReader(r.Colums[i].Value), binary.BigEndian, &val)
-					fmt.Println(val)
+					fmt.Print(val)
 				case "text":
-					fmt.Println(string(r.Colums[i].Value))
-					//print(string(r.Colums[i].Value))
-					//out += string(r.Colums[i].Value)
+					fmt.Print(string(r.Colums[i].Value))
 				}
 			}
-			//if y < len(rsl)-1 {
-			//out += "\n"
-			//print("\n")
-			//}
+			if y < len(rsl)-1 {
+				fmt.Print("\n")
+			}
 		}
-		print(out)
 	} else {
 		switch command {
 		case ".dbinfo":
