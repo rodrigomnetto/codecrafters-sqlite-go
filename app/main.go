@@ -34,7 +34,7 @@ func main() {
 		for y, r := range rsl {
 			for i, c := range r.Metadata {
 				if i > 0 {
-					print("|")
+					fmt.Print("|")
 				}
 				switch strings.ToLower(c.Type) {
 				case "integer": //create enum of database types
