@@ -45,9 +45,7 @@ func main() {
 					fmt.Print(string(r.Colums[i].Value))
 				}
 			}
-			if y < len(rsl)-1 {
-				fmt.Print("\n")
-			}
+			fmt.Print("\n")
 		}
 	} else {
 		switch command {
