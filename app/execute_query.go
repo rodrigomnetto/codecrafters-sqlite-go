@@ -36,9 +36,9 @@ func Run(node sqlparser.SQLNode, rws []Row) []Row {
 		t := tblExprs[0].(*sqlparser.AliasedTableExpr) //why i cant index * type?
 
 		inf := GetTableInfo(schema, t.Expr.(sqlparser.TableName).Name.String())
-		pg := ReadPage(dbFile, inf.PageOffset, schema.PageSize)
+		cells := FullScan(dbFile, inf.PageOffset, schema.PageSize)
 
-		for _, v := range pg.Cells {
+		for _, v := range cells {
 			result = append(result, Row{Metadata: inf.Columns, Colums: v.Record})
 		}
 

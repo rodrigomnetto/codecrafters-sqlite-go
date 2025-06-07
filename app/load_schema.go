@@ -11,10 +11,11 @@ import (
 
 func LoadSchema(f *os.File) Schema {
 	//load schema table in memory
-	schemaPage := ReadPage(f, 0, 0)
+	schemaPage := ReadPage(f, 0, 0) //fix this later to avoid double reading
+	cells := FullScan(f, 0, 0)
 	var tables []Table
 
-	for _, cell := range schemaPage.Cells {
+	for _, cell := range cells {
 
 		if string(cell.Record[0].Value) == "table" && string(cell.Record[1].Value) != "sqlite_sequence" { //check if type is table
 			var rootPage int8 //why it doesnt work with int64 type?

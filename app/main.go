@@ -70,23 +70,53 @@ type DBHeader struct {
 type Page struct {
 	DbHeader   DBHeader
 	PageHeader PageHeader
-	Cells      []Cell
+	Pointers   []int16
+	RawPage    []byte
 }
 
 type PageHeader struct {
-	PageType   byte
-	CellsCount uint16
+	PageType         byte
+	CellsCount       uint16
+	RightMostPointer uint32
 }
 
-type Cell struct {
+type TableLeafCell struct {
 	CellSize int64
 	RowId    int64
 	Record   []Column
 }
 
+type TableInteriorCell struct {
+	LeftChildPointer uint32
+	Key              int64 //change to uint64 later...
+}
+
 type Column struct {
 	SerialType int64
 	Value      []byte
+}
+
+func FullScan(file *os.File, fileOffset int64, pgSize int32) []TableLeafCell {
+	page := ReadPage(file, fileOffset, pgSize)
+	var cells []TableLeafCell
+
+	if page.PageHeader.PageType == 0x0d { //leaf page
+		//read cells
+		for i := 0; i < len(page.Pointers); i++ {
+			cell := ReadTableLeafCell(page.RawPage, int64(page.Pointers[i])) //TODO check casting
+			cells = append(cells, *cell)
+		}
+
+		return cells
+	}
+
+	for i := 0; i < len(page.Pointers); i++ {
+		interiorCell := ReadTableInteriorCell(page.RawPage, int64(page.Pointers[i])) //TODO check casting
+		cells = append(cells, FullScan(file, int64(interiorCell.LeftChildPointer), pgSize)...)
+	}
+
+	cells = append(cells, FullScan(file, int64(page.PageHeader.RightMostPointer), pgSize)...)
+	return cells
 }
 
 func ReadPage(file *os.File, fileOffset int64, pgSize int32) Page {
@@ -108,13 +138,19 @@ func ReadPage(file *os.File, fileOffset int64, pgSize int32) Page {
 		PageType: page[pageOffset],
 	}
 
-	binary.Read(bytes.NewReader(page[pageOffset+3:pageOffset+5]), binary.BigEndian, &header.CellsCount)
+	//binary.Read(bytes.NewReader(page[pageOffset+3:pageOffset+5]), binary.BigEndian, &header.CellsCount) clean if works
+	header.CellsCount = binary.BigEndian.Uint16(page[pageOffset+3 : pageOffset+5])
 
 	//read array pointer
 	var headerSize uint32 = 12
 
 	if header.PageType == 0x0a || header.PageType == 0x0d {
 		headerSize = 8
+	}
+
+	//read right most pointer
+	if header.PageType == 0x02 || header.PageType == 0x05 {
+		header.RightMostPointer = binary.BigEndian.Uint32(page[pageOffset+8 : pageOffset+12])
 	}
 
 	pageOffset += uint32(headerSize)
@@ -126,18 +162,19 @@ func ReadPage(file *os.File, fileOffset int64, pgSize int32) Page {
 		binary.Read(bytes.NewReader(page[p:p+2]), binary.BigEndian, &pointers[i])
 	}
 
-	var cells []Cell
+	var cells []TableLeafCell
 
 	//read cells
 	for i := 0; i < len(pointers); i++ {
-		cell := ReadCell(page, int64(pointers[i])) //TODO check casting
+		cell := ReadTableLeafCell(page, int64(pointers[i])) //TODO check casting
 		cells = append(cells, *cell)
 	}
 
 	return Page{
 		DbHeader:   dbHeader,
 		PageHeader: header,
-		Cells:      cells}
+		Pointers:   pointers,
+		RawPage:    page}
 }
 
 func ReadDBHeader(file *os.File) DBHeader {
@@ -155,7 +192,14 @@ func ReadDBHeader(file *os.File) DBHeader {
 	return DBHeader{PageSize: int32(size)}
 }
 
-func ReadCell(byteArr []byte, off int64) *Cell { //for Table B-Tree Leaf Cell only. treat overflow pages later!
+func ReadTableInteriorCell(byteArr []byte, off int64) *TableInteriorCell {
+	leftChildPointer := binary.BigEndian.Uint32(byteArr[off : off+4])
+	key, _, _ := ReadVarint(byteArr[off+4:])
+
+	return &TableInteriorCell{LeftChildPointer: leftChildPointer, Key: key}
+}
+
+func ReadTableLeafCell(byteArr []byte, off int64) *TableLeafCell { //for Table B-Tree Leaf Cell only. treat overflow pages later!
 
 	//read cell size
 	recordSize, c1, _ := ReadVarint(byteArr[off:])
@@ -166,7 +210,7 @@ func ReadCell(byteArr []byte, off int64) *Cell { //for Table B-Tree Leaf Cell on
 	recordBytes := byteArr[off+c1+c2 : off+c1+c2+recordSize]
 	record := ReadRecord(recordBytes)
 
-	return &Cell{CellSize: c1 + c2 + recordSize, RowId: rowId, Record: record}
+	return &TableLeafCell{CellSize: c1 + c2 + recordSize, RowId: rowId, Record: record}
 }
 
 func ReadRecord(byteArr []byte) []Column {
