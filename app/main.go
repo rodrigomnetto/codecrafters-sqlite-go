@@ -112,10 +112,14 @@ func FullScan(file *os.File, fileOffset int64, pgSize int32) []TableLeafCell {
 
 	for i := 0; i < len(page.Pointers); i++ {
 		interiorCell := ReadTableInteriorCell(page.RawPage, int64(page.Pointers[i])) //TODO check casting
-		cells = append(cells, FullScan(file, int64(interiorCell.LeftChildPointer), pgSize)...)
+		cells = append(cells, FullScan(file, int64(interiorCell.LeftChildPointer-1)*int64(pgSize), pgSize)...)
 	}
 
-	cells = append(cells, FullScan(file, int64(page.PageHeader.RightMostPointer), pgSize)...)
+	if page.PageHeader.RightMostPointer != 0 {
+
+		cells = append(cells, FullScan(file, int64(page.PageHeader.RightMostPointer-1)*int64(pgSize), pgSize)...)
+	}
+
 	return cells
 }
 
@@ -162,14 +166,6 @@ func ReadPage(file *os.File, fileOffset int64, pgSize int32) Page {
 		binary.Read(bytes.NewReader(page[p:p+2]), binary.BigEndian, &pointers[i])
 	}
 
-	var cells []TableLeafCell
-
-	//read cells
-	for i := 0; i < len(pointers); i++ {
-		cell := ReadTableLeafCell(page, int64(pointers[i])) //TODO check casting
-		cells = append(cells, *cell)
-	}
-
 	return Page{
 		DbHeader:   dbHeader,
 		PageHeader: header,
@@ -208,12 +204,12 @@ func ReadTableLeafCell(byteArr []byte, off int64) *TableLeafCell { //for Table B
 
 	//read record
 	recordBytes := byteArr[off+c1+c2 : off+c1+c2+recordSize]
-	record := ReadRecord(recordBytes)
+	record := ReadRecord(recordBytes, rowId)
 
 	return &TableLeafCell{CellSize: c1 + c2 + recordSize, RowId: rowId, Record: record}
 }
 
-func ReadRecord(byteArr []byte) []Column {
+func ReadRecord(byteArr []byte, rowId int64) []Column {
 	headerSize, bytesRead, _ := ReadVarint(byteArr)
 
 	var serialTypes []int64
@@ -226,7 +222,7 @@ func ReadRecord(byteArr []byte) []Column {
 
 	var columns []Column
 
-	for _, tp := range serialTypes {
+	for i, tp := range serialTypes {
 		var size int64
 		switch {
 		case tp == 1:
@@ -257,7 +253,12 @@ func ReadRecord(byteArr []byte) []Column {
 			value = byteArr[bytesRead : bytesRead+size]
 		}
 
-		columns = append(columns, Column{SerialType: tp, Value: value})
+		if i == 0 && size == 0 {
+			columns = append(columns, Column{SerialType: 6, Value: binary.BigEndian.AppendUint64(nil, uint64(rowId))}) //rowid is always the first column
+		} else {
+			columns = append(columns, Column{SerialType: tp, Value: value})
+		}
+
 		bytesRead += size
 	}
 

@@ -17,6 +17,7 @@ func Run(node sqlparser.SQLNode, rws []Row) []Row {
 	var result []Row
 	slct, ok := node.(*sqlparser.Select)
 
+	//SELECT COMMAND
 	if ok {
 		result = Run(slct.From, rws)
 
@@ -29,7 +30,7 @@ func Run(node sqlparser.SQLNode, rws []Row) []Row {
 		return result
 	}
 
-	//from
+	//FROM CLAUSE
 	tblExprs, ok := node.(sqlparser.TableExprs)
 
 	if ok {
@@ -45,7 +46,7 @@ func Run(node sqlparser.SQLNode, rws []Row) []Row {
 		return result
 	}
 
-	//where
+	//WHERE CLAUSE
 	whr, ok := node.(*sqlparser.Where)
 
 	if ok {
@@ -72,7 +73,7 @@ func Run(node sqlparser.SQLNode, rws []Row) []Row {
 		return result
 	}
 
-	//projection
+	//SELECT EXPRESSIONS
 	slcExprs, ok := node.(sqlparser.SelectExprs)
 
 	if ok {

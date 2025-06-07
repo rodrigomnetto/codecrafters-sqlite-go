@@ -23,6 +23,8 @@ func LoadSchema(f *os.File) Schema {
 
 			sql := string(cell.Record[4].Value)
 			sql = strings.Replace(sql, "autoincrement", "", 1) //necessary because sqlparser only parses mysql commands...
+			sql = strings.Replace(sql, "\\", "", -1)
+			sql = strings.Replace(sql, "\"", "`", -1)
 			stm, _ := sqlparser.ParseStrictDDL(sql)
 
 			ddl := stm.(*sqlparser.DDL)
